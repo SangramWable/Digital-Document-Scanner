@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mail,
@@ -11,6 +11,10 @@ import {
   EyeOff,
   ArrowRight,
   Shield,
+  RefreshCw,
+  CheckCircle2,
+  MessageSquare,
+  Clock,
 } from 'lucide-react';
 import {
   Dialog,
@@ -77,9 +81,32 @@ export default function AuthDialog() {
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [demoOtp, setDemoOtp] = useState('');
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const resendTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* ── derived ── */
   const isLogin = authMode === 'login';
+
+  /* ── Resend cooldown timer ── */
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      resendTimerRef.current = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+    };
+  }, [resendCooldown]);
 
   /* ── reset form state when dialog closes or mode changes ── */
   const resetForm = useCallback(() => {
@@ -89,8 +116,13 @@ export default function AuthDialog() {
     setPhone('');
     setOtp('');
     setOtpSent(false);
+    setIsDemoMode(false);
+    setDemoOtp('');
+    setOtpVerified(false);
+    setResendCooldown(0);
     setError('');
     setShowPassword(false);
+    if (resendTimerRef.current) clearInterval(resendTimerRef.current);
   }, []);
 
   /* ────────────────── Email login/signup ────────────────── */
@@ -120,7 +152,7 @@ export default function AuthDialog() {
     }
   };
 
-  /* ────────────────── Mobile OTP flow ────────────────── */
+  /* ────────────────── Send OTP to Mobile ────────────────── */
 
   const handleSendOtp = async () => {
     setError('');
@@ -129,47 +161,74 @@ export default function AuthDialog() {
       return;
     }
     setLoading(true);
+
     try {
-      await authFetch('otp-login', { phone });
+      const data = await authFetch('send-otp', { phone });
+
       setOtpSent(true);
+      setIsDemoMode(data.demoMode || false);
+      setDemoOtp(data.demoOtp || '');
+      setResendCooldown(60); // 60 second cooldown
     } catch (err: unknown) {
-      // Demo fallback: even if API fails, allow OTP flow for demo purposes
-      setOtpSent(true);
+      setError(err instanceof Error ? err.message : 'Failed to send OTP. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  /* ────────────────── Resend OTP ────────────────── */
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+
+    setError('');
+    setOtp('');
+    setLoading(true);
+
+    try {
+      const data = await authFetch('resend-otp', { phone });
+
+      setIsDemoMode(data.demoMode || false);
+      setDemoOtp(data.demoOtp || '');
+      setResendCooldown(60);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to resend OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ────────────────── Verify OTP ────────────────── */
+
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Demo: accept "123456"
-    if (otp === '123456') {
-      const user: UserProfile = {
-        id: crypto.randomUUID(),
-        email: '',
-        name: phone,
-        phone,
-      };
-      login(user);
-      resetForm();
+    if (otp.length !== 6) {
+      setError('Please enter the complete 6-digit OTP');
       return;
     }
 
     setLoading(true);
+
     try {
       const data = await authFetch('verify-otp', { phone, otp });
-      const user: UserProfile = {
-        id: data.user?.id || crypto.randomUUID(),
-        email: data.user?.email || '',
-        name: data.user?.name || phone,
-        phone,
-      };
-      login(user);
-      resetForm();
+
+      setOtpVerified(true);
+
+      // Short delay to show success animation
+      setTimeout(() => {
+        const user: UserProfile = {
+          id: data.user?.id || crypto.randomUUID(),
+          email: data.user?.email || '',
+          name: data.user?.name || phone,
+          phone,
+        };
+        login(user);
+        resetForm();
+      }, 1000);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Invalid OTP. Try again.');
+      setError(err instanceof Error ? err.message : 'Invalid OTP. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -370,13 +429,29 @@ export default function AuthDialog() {
             <TabsContent value="mobile" className="mt-4">
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={otpSent ? 'otp' : 'phone'}
+                  key={otpVerified ? 'verified' : otpSent ? 'otp' : 'phone'}
                   variants={formVariant}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                 >
-                  {!otpSent ? (
+                  {/* ── OTP Verified Success ── */}
+                  {otpVerified ? (
+                    <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                        className="size-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center"
+                      >
+                        <CheckCircle2 className="size-8 text-emerald-600" />
+                      </motion.div>
+                      <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
+                        OTP Verified Successfully!
+                      </p>
+                      <p className="text-sm text-muted-foreground">Logging you in…</p>
+                    </div>
+                  ) : !otpSent ? (
                     /* ── Phone input ── */
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -401,6 +476,9 @@ export default function AuthDialog() {
                             required
                           />
                         </div>
+                        <p className="text-xs text-muted-foreground">
+                          We&apos;ll send a 6-digit OTP to verify your number
+                        </p>
                       </div>
 
                       {/* Error */}
@@ -434,18 +512,36 @@ export default function AuthDialog() {
                           </span>
                         ) : (
                           <span className="flex items-center gap-2">
+                            <MessageSquare className="size-4" />
                             Send OTP
                             <ArrowRight className="size-4" />
                           </span>
                         )}
                       </Button>
+
+                      {/* Info about SMS */}
+                      <Card className="bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800">
+                        <CardContent className="px-3 py-2 flex items-start gap-2">
+                          <span className="text-sky-600 text-sm mt-0.5">📱</span>
+                          <p className="text-xs text-sky-700 dark:text-sky-400">
+                            <strong>Real SMS:</strong> OTP will be sent to your mobile number via SMS.
+                            {!process.env.NEXT_PUBLIC_SMS_CONFIGURED && ' In demo mode, OTP will be shown on screen.'}
+                          </p>
+                        </CardContent>
+                      </Card>
                     </div>
                   ) : (
                     /* ── OTP verification ── */
                     <form onSubmit={handleVerifyOtp} className="space-y-4">
+                      {/* OTP sent indicator */}
+                      <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="size-4 shrink-0" />
+                        <span>OTP sent to <strong>+91 {phone}</strong></span>
+                      </div>
+
                       <div className="space-y-2">
                         <Label htmlFor="auth-otp" className="text-sm font-medium">
-                          Enter OTP
+                          Enter 6-digit OTP
                         </Label>
                         <div className="relative">
                           <Shield className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -453,32 +549,64 @@ export default function AuthDialog() {
                             id="auth-otp"
                             type="text"
                             inputMode="numeric"
-                            placeholder="6-digit OTP"
+                            placeholder="• • • • • •"
                             maxLength={6}
                             value={otp}
                             onChange={(e) => {
                               const val = e.target.value.replace(/\D/g, '').slice(0, 6);
                               setOtp(val);
                             }}
-                            className="pl-10 tracking-[0.3em] text-center font-mono text-lg"
+                            className="pl-10 tracking-[0.5em] text-center font-mono text-lg"
                             required
                             autoFocus
                           />
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          OTP sent to +91 {phone}
-                        </p>
                       </div>
 
-                      {/* Demo hint */}
-                      <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
-                        <CardContent className="px-3 py-2 flex items-start gap-2">
-                          <span className="text-amber-600 text-sm mt-0.5">💡</span>
-                          <p className="text-xs text-amber-700 dark:text-amber-400">
-                            <strong>Demo Mode:</strong> Enter <code className="bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded font-mono font-bold">123456</code> as demo OTP
-                          </p>
-                        </CardContent>
-                      </Card>
+                      {/* Demo mode hint - show OTP on screen */}
+                      {isDemoMode && demoOtp && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.3 }}
+                        >
+                          <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+                            <CardContent className="px-3 py-3 flex flex-col items-center gap-2">
+                              <p className="text-xs text-amber-700 dark:text-amber-400 text-center font-medium">
+                                🔧 Demo Mode — SMS service not configured
+                              </p>
+                              <p className="text-xs text-amber-600 dark:text-amber-500 text-center">
+                                Your OTP is:
+                              </p>
+                              <div className="bg-amber-100 dark:bg-amber-900/50 px-4 py-2 rounded-lg">
+                                <span className="font-mono text-2xl font-bold tracking-[0.3em] text-amber-800 dark:text-amber-300">
+                                  {demoOtp}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 text-center mt-1">
+                                Add FAST2SMS_API_KEY to .env for real SMS delivery
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      )}
+
+                      {/* Real SMS mode indicator */}
+                      {!isDemoMode && (
+                        <Card className="bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
+                          <CardContent className="px-3 py-2 flex items-start gap-2">
+                            <MessageSquare className="size-4 text-emerald-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                                OTP sent via SMS
+                              </p>
+                              <p className="text-[10px] text-emerald-600/70 dark:text-emerald-500/70">
+                                Check your phone for the 6-digit code. Valid for 5 minutes.
+                              </p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
 
                       {/* Error */}
                       <AnimatePresence>
@@ -510,8 +638,8 @@ export default function AuthDialog() {
                           </span>
                         ) : (
                           <span className="flex items-center gap-2">
+                            <Shield className="size-4" />
                             Verify & Continue
-                            <ArrowRight className="size-4" />
                           </span>
                         )}
                       </Button>
@@ -523,6 +651,8 @@ export default function AuthDialog() {
                           onClick={() => {
                             setOtp('');
                             setOtpSent(false);
+                            setIsDemoMode(false);
+                            setDemoOtp('');
                             setError('');
                           }}
                           className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium hover:underline underline-offset-4 transition-colors"
@@ -531,10 +661,25 @@ export default function AuthDialog() {
                         </button>
                         <button
                           type="button"
-                          onClick={handleSendOtp}
-                          className="text-muted-foreground hover:text-foreground font-medium hover:underline underline-offset-4 transition-colors"
+                          onClick={handleResendOtp}
+                          disabled={resendCooldown > 0 || loading}
+                          className={`font-medium transition-colors ${
+                            resendCooldown > 0
+                              ? 'text-muted-foreground cursor-not-allowed'
+                              : 'text-muted-foreground hover:text-foreground hover:underline underline-offset-4'
+                          }`}
                         >
-                          Resend OTP
+                          {resendCooldown > 0 ? (
+                            <span className="flex items-center gap-1.5">
+                              <Clock className="size-3.5" />
+                              Resend in {resendCooldown}s
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5">
+                              <RefreshCw className="size-3.5" />
+                              Resend OTP
+                            </span>
+                          )}
                         </button>
                       </div>
                     </form>
