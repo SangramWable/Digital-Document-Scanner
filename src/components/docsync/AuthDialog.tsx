@@ -83,6 +83,7 @@ export default function AuthDialog() {
   const [otpSent, setOtpSent] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [demoOtp, setDemoOtp] = useState('');
+  const [setupInfo, setSetupInfo] = useState('');
   const [otpVerified, setOtpVerified] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const resendTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -118,6 +119,7 @@ export default function AuthDialog() {
     setOtpSent(false);
     setIsDemoMode(false);
     setDemoOtp('');
+    setSetupInfo('');
     setOtpVerified(false);
     setResendCooldown(0);
     setError('');
@@ -168,6 +170,7 @@ export default function AuthDialog() {
       setOtpSent(true);
       setIsDemoMode(data.demoMode || false);
       setDemoOtp(data.demoOtp || '');
+      setSetupInfo(data.setupInfo || '');
       setResendCooldown(60); // 60 second cooldown
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send OTP. Please try again.');
@@ -190,6 +193,7 @@ export default function AuthDialog() {
 
       setIsDemoMode(data.demoMode || false);
       setDemoOtp(data.demoOtp || '');
+      setSetupInfo(data.setupInfo || '');
       setResendCooldown(60);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to resend OTP. Please try again.');
@@ -523,10 +527,14 @@ export default function AuthDialog() {
                       <Card className="bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800">
                         <CardContent className="px-3 py-2 flex items-start gap-2">
                           <span className="text-sky-600 text-sm mt-0.5">📱</span>
-                          <p className="text-xs text-sky-700 dark:text-sky-400">
-                            <strong>Real SMS:</strong> OTP will be sent to your mobile number via SMS.
-                            {!process.env.NEXT_PUBLIC_SMS_CONFIGURED && ' In demo mode, OTP will be shown on screen.'}
-                          </p>
+                          <div>
+                            <p className="text-xs text-sky-700 dark:text-sky-400 font-medium">
+                              Real SMS Delivery
+                            </p>
+                            <p className="text-[10px] text-sky-600/70 dark:text-sky-500/70 mt-0.5">
+                              OTP will be sent to your mobile number via SMS. Check your inbox. Valid for 5 minutes.
+                            </p>
+                          </div>
                         </CardContent>
                       </Card>
                     </div>
@@ -563,7 +571,7 @@ export default function AuthDialog() {
                         </div>
                       </div>
 
-                      {/* Demo mode hint - show OTP on screen */}
+                      {/* Demo mode hint - only shows when no SMS gateway is configured */}
                       {isDemoMode && demoOtp && (
                         <motion.div
                           initial={{ opacity: 0, scale: 0.95 }}
@@ -573,7 +581,7 @@ export default function AuthDialog() {
                           <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
                             <CardContent className="px-3 py-3 flex flex-col items-center gap-2">
                               <p className="text-xs text-amber-700 dark:text-amber-400 text-center font-medium">
-                                🔧 Demo Mode — SMS service not configured
+                                {setupInfo ? '⚡ SMS Setup In Progress' : '🔧 Demo Mode — SMS service not configured'}
                               </p>
                               <p className="text-xs text-amber-600 dark:text-amber-500 text-center">
                                 Your OTP is:
@@ -583,8 +591,13 @@ export default function AuthDialog() {
                                   {demoOtp}
                                 </span>
                               </div>
+                              {setupInfo && (
+                                <p className="text-[10px] text-amber-600/80 dark:text-amber-500/80 text-center mt-1">
+                                  {setupInfo}
+                                </p>
+                              )}
                               <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 text-center mt-1">
-                                Add FAST2SMS_API_KEY to .env for real SMS delivery
+                                To enable real SMS: Fast2SMS Dashboard → Complete website verification (OTP route) or add ₹100+ credits (v3 route)
                               </p>
                             </CardContent>
                           </Card>
@@ -593,19 +606,25 @@ export default function AuthDialog() {
 
                       {/* Real SMS mode indicator */}
                       {!isDemoMode && (
-                        <Card className="bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
-                          <CardContent className="px-3 py-2 flex items-start gap-2">
-                            <MessageSquare className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-                            <div>
-                              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-                                OTP sent via SMS
-                              </p>
-                              <p className="text-[10px] text-emerald-600/70 dark:text-emerald-500/70">
-                                Check your phone for the 6-digit code. Valid for 5 minutes.
-                              </p>
-                            </div>
-                          </CardContent>
-                        </Card>
+                        <motion.div
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.2 }}
+                        >
+                          <Card className="bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800">
+                            <CardContent className="px-3 py-2 flex items-start gap-2">
+                              <MessageSquare className="size-4 text-emerald-600 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                                  OTP sent via SMS to +91 {phone}
+                                </p>
+                                <p className="text-[10px] text-emerald-600/70 dark:text-emerald-500/70">
+                                  Check your phone messages for the 6-digit code. Valid for 5 minutes.
+                                </p>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
                       )}
 
                       {/* Error */}
@@ -653,6 +672,7 @@ export default function AuthDialog() {
                             setOtpSent(false);
                             setIsDemoMode(false);
                             setDemoOtp('');
+                            setSetupInfo('');
                             setError('');
                           }}
                           className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium hover:underline underline-offset-4 transition-colors"
