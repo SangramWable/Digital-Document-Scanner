@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#059669;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0d9488;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#14b8a6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Shield -->
+  <path d="M60 8 L105 28 L105 60 C105 85 85 105 60 115 C35 105 15 85 15 60 L15 28 Z" fill="url(#grad1)" stroke="#047857" stroke-width="2"/>
+  <!-- Inner shield -->
+  <path d="M60 18 L95 34 L95 60 C95 80 78 97 60 105 C42 97 25 80 25 60 L25 34 Z" fill="url(#grad2)" opacity="0.3"/>
+  <!-- Document icon -->
+  <rect x="42" y="30" width="36" height="44" rx="3" fill="white" opacity="0.95"/>
+  <rect x="48" y="38" width="24" height="3" rx="1.5" fill="#059669" opacity="0.7"/>
+  <rect x="48" y="45" width="20" height="3" rx="1.5" fill="#059669" opacity="0.5"/>
+  <rect x="48" y="52" width="22" height="3" rx="1.5" fill="#059669" opacity="0.5"/>
+  <rect x="48" y="59" width="16" height="3" rx="1.5" fill="#059669" opacity="0.4"/>
+  <!-- Checkmark -->
+  <circle cx="70" cy="62" r="8" fill="#059669"/>
+  <path d="M66 62 L69 65 L75 58" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- India text hint -->
+  <text x="60" y="100" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="9" font-weight="bold" opacity="0.9">INDIA</text>
+</svg>
