@@ -40,20 +40,19 @@ function cleanExpiredOtps() {
 
 /**
  * Send OTP via Fast2SMS API
- * Fast2SMS provides free SMS credits for Indian numbers
+ * Fast2SMS provides SMS credits for Indian numbers
  * Get your API key from: https://www.fast2sms.com
  *
- * Supports multiple routes:
- * 1. 'otp' route — dedicated OTP delivery (requires website verification on Fast2SMS)
- * 2. 'v3' route — quick transactional (requires ₹100+ transaction on Fast2SMS)
- *
- * If all routes fail, falls back to demo mode (OTP shown on screen)
+ * Tries multiple routes in order:
+ * 1. 'q' route — Quick transactional
+ * 2. 'otp' route — Dedicated OTP delivery (requires website verification)
+ * 3. 'v3' route — Transactional
+ * 4. Voice call — Reads OTP over phone call
  */
 async function sendOtpViaFast2Sms(phone: string, otp: string): Promise<{ success: boolean; message: string; demoMode: boolean; setupInfo?: string }> {
   const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY;
 
   if (!FAST2SMS_API_KEY) {
-    // No API key configured — return demo mode info
     return {
       success: true,
       message: 'DEMO_MODE',
@@ -61,35 +60,20 @@ async function sendOtpViaFast2Sms(phone: string, otp: string): Promise<{ success
     };
   }
 
-  const otpMessage = `${otp} is your DocSync India verification code. Do not share this OTP with anyone. Valid for 5 minutes.`;
+  const otpMessage = `${otp} is your DocSync India verification code. Do not share this OTP with anyone.`;
 
-  // Try routes in order: otp → v3 (quick transactional)
-  const routes = [
-    {
-      name: 'otp',
-      payload: {
-        route: 'otp',
-        variables_values: otp,
-        numbers: phone,
-        flash: 0,
-      },
-    },
-    {
-      name: 'v3',
-      payload: {
-        route: 'v3',
-        message: otpMessage,
-        numbers: phone,
-        flash: 0,
-      },
-    },
+  // Try SMS routes in order
+  const smsRoutes = [
+    { name: 'q', payload: { route: 'q', message: otpMessage, numbers: phone, flash: 0 } },
+    { name: 'otp', payload: { route: 'otp', variables_values: otp, numbers: phone, flash: 0 } },
+    { name: 'v3', payload: { route: 'v3', message: otpMessage, numbers: phone, flash: 0 } },
   ];
 
   const errors: string[] = [];
 
-  for (const route of routes) {
+  for (const route of smsRoutes) {
     try {
-      console.log(`[Fast2SMS] Trying route '${route.name}' for phone ${phone}`);
+      console.log(`[Fast2SMS] Trying SMS route '${route.name}' for phone ${phone}`);
       const response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
         method: 'POST',
         headers: {
@@ -109,30 +93,131 @@ async function sendOtpViaFast2Sms(phone: string, otp: string): Promise<{ success
         const errMsg = data.message || `Route '${route.name}' failed`;
         console.warn(`[Fast2SMS] Route '${route.name}' failed:`, JSON.stringify(data));
         errors.push(errMsg);
-        continue;
       }
     } catch (error) {
-      const errMsg = `Route '${route.name}' network error`;
-      console.error(`[Fast2SMS] ${errMsg}:`, error);
-      errors.push(errMsg);
-      continue;
+      console.error(`[Fast2SMS] Route '${route.name}' error:`, error);
+      errors.push(`Route '${route.name}' network error`);
     }
   }
 
-  // All SMS routes failed — fall back to demo mode so users can still log in
-  console.warn('[Fast2SMS] All SMS routes failed. Falling back to demo mode.');
-  console.warn('[Fast2SMS] Errors:', errors.join(' | '));
-  console.warn('[Fast2SMS] Setup instructions:');
-  console.warn('  1. For OTP route: Complete website verification at Fast2SMS Dashboard → OTP Message menu');
-  console.warn('  2. For v3 route: Complete at least one transaction of ₹100+ on Fast2SMS');
-  console.log(`[DEMO OTP FALLBACK] Phone: +91${phone}, OTP: ${otp}`);
+  // Try voice call as last Fast2SMS option
+  try {
+    console.log(`[Fast2SMS] Trying voice call for phone ${phone}`);
+    const voiceResponse = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+      method: 'POST',
+      headers: {
+        'authorization': FAST2SMS_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        route: 'voice',
+        variables_values: otp,
+        numbers: phone,
+      }),
+    });
 
+    const voiceData = await voiceResponse.json();
+
+    if (voiceData.return === true || voiceData.return === 'true') {
+      console.log('[Fast2SMS] OTP sent successfully via voice call');
+      return { success: true, message: 'OTP sent successfully via voice call', demoMode: false };
+    } else {
+      console.warn('[Fast2SMS] Voice call failed:', JSON.stringify(voiceData));
+      errors.push(voiceData.message || 'Voice call failed');
+    }
+  } catch (error) {
+    console.error('[Fast2SMS] Voice call error:', error);
+    errors.push('Voice call network error');
+  }
+
+  // All Fast2SMS routes failed
+  console.warn('[Fast2SMS] All routes failed. Errors:', errors.join(' | '));
   return {
-    success: true,
-    message: 'DEMO_FALLBACK',
+    success: false,
+    message: 'Fast2SMS routes failed',
     demoMode: true,
-    setupInfo: 'SMS service requires setup on Fast2SMS. For now, OTP is shown on screen.',
+    setupInfo: 'Fast2SMS needs ₹100 wallet credit. Trying alternative...',
   };
+}
+
+/**
+ * Send OTP via MSG91 — Indian OTP service with free credits on signup
+ * Sign up at: https://msg91.com
+ */
+async function sendOtpViaMsg91(phone: string, otp: string): Promise<{ success: boolean; message: string }> {
+  const MSG91_API_KEY = process.env.MSG91_API_KEY;
+  const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID;
+
+  if (!MSG91_API_KEY) {
+    return { success: false, message: 'MSG91 not configured' };
+  }
+
+  try {
+    console.log(`[MSG91] Sending OTP to +91${phone}`);
+    const response = await fetch(`https://api.msg91.com/api/v5/otp`, {
+      method: 'POST',
+      headers: {
+        'authkey': MSG91_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        template_id: MSG91_TEMPLATE_ID || 'docsync_otp',
+        mobile: `91${phone}`,
+        OTP: otp,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.type === 'success' || data.message === 'success') {
+      console.log('[MSG91] OTP sent successfully');
+      return { success: true, message: 'OTP sent successfully via MSG91' };
+    } else {
+      console.warn('[MSG91] Failed:', JSON.stringify(data));
+      return { success: false, message: data.message || 'MSG91 failed' };
+    }
+  } catch (error) {
+    console.error('[MSG91] Error:', error);
+    return { success: false, message: 'MSG91 network error' };
+  }
+}
+
+/**
+ * Send OTP via TextBelt — truly free SMS service (no account needed)
+ * TextBelt provides free SMS delivery (1 free SMS per day per IP)
+ * Website: https://textbelt.com
+ */
+async function sendOtpViaTextBelt(phone: string, otp: string): Promise<{ success: boolean; message: string }> {
+  const otpMessage = `${otp} is your DocSync India verification code. Do not share this OTP with anyone. Valid for 5 minutes.`;
+
+  try {
+    console.log(`[TextBelt] Sending OTP to +91${phone}`);
+    const response = await fetch('https://textbelt.com/text', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: `+91${phone}`,
+        message: otpMessage,
+        key: 'textbelt',
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      console.log('[TextBelt] OTP sent successfully');
+      return { success: true, message: 'OTP sent successfully via SMS' };
+    } else {
+      console.warn('[TextBelt] Failed:', data.error || 'Unknown error');
+      return { success: false, message: data.error || 'TextBelt failed' };
+    }
+  } catch (error) {
+    console.error('[TextBelt] Network error:', error);
+    return { success: false, message: 'TextBelt network error' };
+  }
 }
 
 /**
@@ -167,28 +252,52 @@ async function sendOtpVia2Factor(phone: string, otp: string): Promise<{ success:
 }
 
 /**
- * Unified OTP sender — tries Fast2SMS first, then 2Factor, then falls back to demo mode
+ * Unified OTP sender — tries multiple services in order:
+ * 1. Fast2SMS (SMS + Voice call)
+ * 2. MSG91 (if API key configured)
+ * 3. TextBelt (free, no account needed)
+ * 4. 2Factor.in (if API key configured)
+ * 5. Falls back to demo mode (OTP shown on screen)
  */
 async function sendOtp(phone: string, otp: string): Promise<{ success: boolean; message: string; demoMode: boolean; setupInfo?: string }> {
-  // Try Fast2SMS first
+  // 1. Try Fast2SMS (SMS routes + voice call)
   const fast2smsResult = await sendOtpViaFast2Sms(phone, otp);
 
-  if (fast2smsResult.demoMode && fast2smsResult.message === 'DEMO_MODE') {
-    // No Fast2SMS key configured, try 2Factor
-    const twoFactorResult = await sendOtpVia2Factor(phone, otp);
-
-    if (twoFactorResult.message === 'DEMO_MODE') {
-      // No SMS service configured — pure demo mode
-      console.log(`[DEMO OTP] Phone: +91${phone}, OTP: ${otp}`);
-      return { success: true, message: 'DEMO_MODE', demoMode: true };
-    }
-
-    return { ...twoFactorResult, demoMode: false };
+  if (!fast2smsResult.demoMode && fast2smsResult.success) {
+    return fast2smsResult;
   }
 
-  // Fast2SMS key is configured — return whatever result we got
-  // (could be success with real SMS, or demo fallback if routes failed)
-  return fast2smsResult;
+  // 2. Try MSG91
+  const msg91Result = await sendOtpViaMsg91(phone, otp);
+  if (msg91Result.success) {
+    return { ...msg91Result, demoMode: false };
+  }
+
+  // 3. Try TextBelt (free, no account needed)
+  console.log('[OTP] Fast2SMS & MSG91 unavailable, trying TextBelt...');
+  const textBeltResult = await sendOtpViaTextBelt(phone, otp);
+  if (textBeltResult.success) {
+    return { ...textBeltResult, demoMode: false };
+  }
+
+  // 4. Try 2Factor if configured
+  const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY;
+  if (TWOFACTOR_API_KEY) {
+    console.log('[OTP] Trying 2Factor...');
+    const twoFactorResult = await sendOtpVia2Factor(phone, otp);
+    if (twoFactorResult.success) {
+      return { ...twoFactorResult, demoMode: false };
+    }
+  }
+
+  // All services failed — fall back to demo mode so users can still log in
+  console.log(`[DEMO OTP FALLBACK] Phone: +91${phone}, OTP: ${otp}`);
+  return {
+    success: true,
+    message: 'DEMO_FALLBACK',
+    demoMode: true,
+    setupInfo: 'SMS delivery needs Fast2SMS wallet credit (₹100). Your OTP is shown on screen for now.',
+  };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

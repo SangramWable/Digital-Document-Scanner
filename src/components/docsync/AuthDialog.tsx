@@ -529,10 +529,10 @@ export default function AuthDialog() {
                           <span className="text-sky-600 text-sm mt-0.5">📱</span>
                           <div>
                             <p className="text-xs text-sky-700 dark:text-sky-400 font-medium">
-                              Real SMS Delivery
+                              OTP via SMS / Voice Call
                             </p>
                             <p className="text-[10px] text-sky-600/70 dark:text-sky-500/70 mt-0.5">
-                              OTP will be sent to your mobile number via SMS. Check your inbox. Valid for 5 minutes.
+                              We&apos;ll send a 6-digit OTP to your mobile. Check your SMS inbox or you may receive a voice call.
                             </p>
                           </div>
                         </CardContent>
@@ -571,7 +571,7 @@ export default function AuthDialog() {
                         </div>
                       </div>
 
-                      {/* Demo mode hint - only shows when no SMS gateway is configured */}
+                      {/* Demo mode hint - only shows when no SMS gateway delivered the OTP */}
                       {isDemoMode && demoOtp && (
                         <motion.div
                           initial={{ opacity: 0, scale: 0.95 }}
@@ -581,7 +581,7 @@ export default function AuthDialog() {
                           <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
                             <CardContent className="px-3 py-3 flex flex-col items-center gap-2">
                               <p className="text-xs text-amber-700 dark:text-amber-400 text-center font-medium">
-                                {setupInfo ? '⚡ SMS Setup In Progress' : '🔧 Demo Mode — SMS service not configured'}
+                                ⚡ SMS Not Delivered — OTP Shown Below
                               </p>
                               <p className="text-xs text-amber-600 dark:text-amber-500 text-center">
                                 Your OTP is:
@@ -596,9 +596,20 @@ export default function AuthDialog() {
                                   {setupInfo}
                                 </p>
                               )}
-                              <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 text-center mt-1">
-                                To enable real SMS: Fast2SMS Dashboard → Complete website verification (OTP route) or add ₹100+ credits (v3 route)
-                              </p>
+                              <div className="w-full border-t border-amber-200 dark:border-amber-800 mt-1 pt-2">
+                                <p className="text-[10px] text-amber-700 dark:text-amber-400 text-center font-semibold mb-1">
+                                  To activate real SMS delivery:
+                                </p>
+                                <p className="text-[10px] text-amber-600/80 dark:text-amber-500/80 text-center">
+                                  1. Go to fast2sms.com → Add ₹100 wallet credit
+                                </p>
+                                <p className="text-[10px] text-amber-600/80 dark:text-amber-500/80 text-center">
+                                  2. Or complete website verification in OTP Message menu
+                                </p>
+                                <p className="text-[9px] text-amber-600/60 dark:text-amber-500/60 text-center mt-1">
+                                  ₹100 gives ~500 SMS credits (₹0.20 each)
+                                </p>
+                              </div>
                             </CardContent>
                           </Card>
                         </motion.div>
