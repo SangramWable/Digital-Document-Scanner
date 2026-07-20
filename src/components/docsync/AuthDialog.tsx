@@ -598,16 +598,19 @@ export default function AuthDialog() {
                               )}
                               <div className="w-full border-t border-amber-200 dark:border-amber-800 mt-1 pt-2">
                                 <p className="text-[10px] text-amber-700 dark:text-amber-400 text-center font-semibold mb-1">
-                                  To activate real SMS delivery:
+                                  🆓 Get FREE SMS OTP delivery:
                                 </p>
                                 <p className="text-[10px] text-amber-600/80 dark:text-amber-500/80 text-center">
-                                  1. Go to fast2sms.com → Add ₹100 wallet credit
+                                  1. Sign up at <strong>messagecentral.com</strong> (free)
                                 </p>
                                 <p className="text-[10px] text-amber-600/80 dark:text-amber-500/80 text-center">
-                                  2. Or complete website verification in OTP Message menu
+                                  2. Get 1,000 free OTP credits — <strong>no DLT needed!</strong>
+                                </p>
+                                <p className="text-[10px] text-amber-600/80 dark:text-amber-500/80 text-center">
+                                  3. Add your credentials to the <strong>.env</strong> file
                                 </p>
                                 <p className="text-[9px] text-amber-600/60 dark:text-amber-500/60 text-center mt-1">
-                                  ₹100 gives ~500 SMS credits (₹0.20 each)
+                                  Or add ₹100 to Fast2SMS for ~500 SMS credits
                                 </p>
                               </div>
                             </CardContent>

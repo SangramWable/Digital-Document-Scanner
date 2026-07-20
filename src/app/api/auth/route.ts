@@ -141,45 +141,93 @@ async function sendOtpViaFast2Sms(phone: string, otp: string): Promise<{ success
   };
 }
 
-/**
- * Send OTP via MSG91 — Indian OTP service with free credits on signup
- * Sign up at: https://msg91.com
- */
-async function sendOtpViaMsg91(phone: string, otp: string): Promise<{ success: boolean; message: string }> {
-  const MSG91_API_KEY = process.env.MSG91_API_KEY;
-  const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID;
+/* ══════════════════════════════════════════════════════════════════════════════
+   MessageCentral VerifyNow — FREE OTP SMS for India (1000 free on signup)
+   No DLT registration needed! Sign up at: https://www.messagecentral.com
+   ══════════════════════════════════════════════════════════════════════════════ */
 
-  if (!MSG91_API_KEY) {
-    return { success: false, message: 'MSG91 not configured' };
+// Cache the auth token to avoid re-generating it on every OTP request
+let mcAuthToken: string | null = null;
+let mcAuthTokenExpiry = 0; // epoch ms
+
+async function getMcAuthToken(): Promise<string | null> {
+  const MC_CUSTOMER_ID = process.env.MESSAGECENTRAL_CUSTOMER_ID;
+  const MC_EMAIL = process.env.MESSAGECENTRAL_EMAIL;
+  const MC_PASSWORD = process.env.MESSAGECENTRAL_PASSWORD;
+
+  if (!MC_CUSTOMER_ID || !MC_EMAIL || !MC_PASSWORD) {
+    return null;
+  }
+
+  // Use cached token if still valid (tokens typically last 24 hours)
+  if (mcAuthToken && Date.now() < mcAuthTokenExpiry) {
+    return mcAuthToken;
   }
 
   try {
-    console.log(`[MSG91] Sending OTP to +91${phone}`);
-    const response = await fetch(`https://api.msg91.com/api/v5/otp`, {
-      method: 'POST',
-      headers: {
-        'authkey': MSG91_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        template_id: MSG91_TEMPLATE_ID || 'docsync_otp',
-        mobile: `91${phone}`,
-        OTP: otp,
-      }),
+    const base64Password = Buffer.from(MC_PASSWORD).toString('base64');
+    const url = `https://cpaas.messagecentral.com/auth/v1/authentication/token?country=IN&customerId=${MC_CUSTOMER_ID}&email=${MC_EMAIL}&key=${base64Password}&scope=NEW`;
+
+    console.log('[MessageCentral] Generating auth token...');
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { accept: '*/*' },
     });
 
     const data = await response.json();
-
-    if (data.type === 'success' || data.message === 'success') {
-      console.log('[MSG91] OTP sent successfully');
-      return { success: true, message: 'OTP sent successfully via MSG91' };
+    if (data.token) {
+      mcAuthToken = data.token;
+      // Cache for 23 hours (token lasts 24 hours)
+      mcAuthTokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+      console.log('[MessageCentral] Auth token generated successfully');
+      return mcAuthToken;
     } else {
-      console.warn('[MSG91] Failed:', JSON.stringify(data));
-      return { success: false, message: data.message || 'MSG91 failed' };
+      console.error('[MessageCentral] Auth token failed:', JSON.stringify(data));
+      return null;
     }
   } catch (error) {
-    console.error('[MSG91] Error:', error);
-    return { success: false, message: 'MSG91 network error' };
+    console.error('[MessageCentral] Auth token error:', error);
+    return null;
+  }
+}
+
+async function sendOtpViaMessageCentral(phone: string, _otp: string): Promise<{ success: boolean; message: string }> {
+  const MC_CUSTOMER_ID = process.env.MESSAGECENTRAL_CUSTOMER_ID;
+
+  if (!MC_CUSTOMER_ID) {
+    return { success: false, message: 'MessageCentral not configured' };
+  }
+
+  try {
+    const token = await getMcAuthToken();
+    if (!token) {
+      return { success: false, message: 'MessageCentral auth failed' };
+    }
+
+    console.log(`[MessageCentral] Sending OTP to +91${phone}`);
+    const response = await fetch(
+      `https://cpaas.messagecentral.com/verification/v2/verification/send?countryCode=91&customerId=${MC_CUSTOMER_ID}&flowType=SMS&mobileNumber=${phone}`,
+      {
+        method: 'POST',
+        headers: {
+          accept: '*/*',
+          authToken: token,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.responseCode === 200 || data.status === 'SUCCESS' || data.verificationId) {
+      console.log('[MessageCentral] OTP sent successfully');
+      return { success: true, message: 'OTP sent successfully via MessageCentral' };
+    } else {
+      console.warn('[MessageCentral] Send failed:', JSON.stringify(data));
+      return { success: false, message: data.message || data.responseMessage || 'MessageCentral send failed' };
+    }
+  } catch (error) {
+    console.error('[MessageCentral] Error:', error);
+    return { success: false, message: 'MessageCentral network error' };
   }
 }
 
@@ -253,28 +301,27 @@ async function sendOtpVia2Factor(phone: string, otp: string): Promise<{ success:
 
 /**
  * Unified OTP sender — tries multiple services in order:
- * 1. Fast2SMS (SMS + Voice call)
- * 2. MSG91 (if API key configured)
- * 3. TextBelt (free, no account needed)
+ * 1. MessageCentral VerifyNow (1000 FREE OTP, no DLT needed for India!)
+ * 2. Fast2SMS (SMS + Voice call)
+ * 3. TextBelt (free, no account needed — but blocked for India)
  * 4. 2Factor.in (if API key configured)
  * 5. Falls back to demo mode (OTP shown on screen)
  */
 async function sendOtp(phone: string, otp: string): Promise<{ success: boolean; message: string; demoMode: boolean; setupInfo?: string }> {
-  // 1. Try Fast2SMS (SMS routes + voice call)
-  const fast2smsResult = await sendOtpViaFast2Sms(phone, otp);
+  // 1. Try MessageCentral first — it's FREE and works for India without DLT!
+  const mcResult = await sendOtpViaMessageCentral(phone, otp);
+  if (mcResult.success) {
+    return { ...mcResult, demoMode: false };
+  }
 
+  // 2. Try Fast2SMS (SMS routes + voice call)
+  const fast2smsResult = await sendOtpViaFast2Sms(phone, otp);
   if (!fast2smsResult.demoMode && fast2smsResult.success) {
     return fast2smsResult;
   }
 
-  // 2. Try MSG91
-  const msg91Result = await sendOtpViaMsg91(phone, otp);
-  if (msg91Result.success) {
-    return { ...msg91Result, demoMode: false };
-  }
-
-  // 3. Try TextBelt (free, no account needed)
-  console.log('[OTP] Fast2SMS & MSG91 unavailable, trying TextBelt...');
+  // 3. Try TextBelt (free, no account needed — may be blocked for India)
+  console.log('[OTP] MessageCentral & Fast2SMS unavailable, trying TextBelt...');
   const textBeltResult = await sendOtpViaTextBelt(phone, otp);
   if (textBeltResult.success) {
     return { ...textBeltResult, demoMode: false };
@@ -296,7 +343,7 @@ async function sendOtp(phone: string, otp: string): Promise<{ success: boolean; 
     success: true,
     message: 'DEMO_FALLBACK',
     demoMode: true,
-    setupInfo: 'SMS delivery needs Fast2SMS wallet credit (₹100). Your OTP is shown on screen for now.',
+    setupInfo: 'For free SMS OTP: Sign up at messagecentral.com (1000 free OTP, no DLT needed). Add your credentials to .env file.',
   };
 }
 
