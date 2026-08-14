@@ -11,7 +11,7 @@ node_modules
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-bun.lock
+
 
 # testing
 /coverage
@@ -72,8 +72,7 @@ server.log
 /worklog.md
 /otp-test-result.png
 /screenshot-*.png
-/Caddyfile
-/examples/
+
 
 # Mini services
 /mini-services/*/node_modules
