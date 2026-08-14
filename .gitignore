@@ -1,4 +1,6 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ═══════════════════════════════════════════════════════════════
+# DocSync India — .gitignore
+# ═══════════════════════════════════════════════════════════════
 
 # dependencies
 node_modules
@@ -9,6 +11,7 @@ node_modules
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+bun.lock
 
 # testing
 /coverage
@@ -20,50 +23,57 @@ node_modules
 # production
 /build
 
+# database
+/db/*.db
+/db/*.db-journal
+
 # misc
 .DS_Store
 *.pem
+Thumbs.db
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files
+# env files — KEEP .env.example for reference!
 .env
 .env.local
 .env.*.local
-# Keep .env.example for reference
 !.env.example
 
 # vercel
 .vercel
 
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI / dev tool configs
 local-*
 .claude
 .z-ai-config
-*.log
-dev.log
-dev.out.log
-test
 prompt
 
+# Logs
+dev.log
+dev.out.log
 server.log
 
 # Skills directory
 /skills/
 
-# Project-specific
+# Project-specific temp files
 /tool-results/
 /upload/
 /worklog.md
-/dev.log
 /otp-test-result.png
 /screenshot-*.png
 /Caddyfile
 /examples/
+
+# Mini services
+/mini-services/*/node_modules
