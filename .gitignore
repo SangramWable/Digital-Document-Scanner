@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.local
+.env.*.local
+# Keep .env.example for reference
+!.env.example
 
 # vercel
 .vercel
@@ -50,5 +54,16 @@ test
 prompt
 
 server.log
+
 # Skills directory
 /skills/
+
+# Project-specific
+/tool-results/
+/upload/
+/worklog.md
+/dev.log
+/otp-test-result.png
+/screenshot-*.png
+/Caddyfile
+/examples/
